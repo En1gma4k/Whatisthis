@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-time Object Detection</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/4.2.0/tf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow-models/coco-ssd/2.2.2/coco-ssd.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        #videoContainer {
+            position: relative;
+            margin-bottom: 20px;
+        }
+        #webcam {
+            width: 100%;
+            max-width: 640px;
+            height: auto;
+            display: block;
+            margin: 0 auto;
+        }
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        #detectedObjects {
+            background-color: #f9f9f9;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+        #detectedObjects h2 {
+            margin-top: 0;
+        }
+        #objectList {
+            list-style-type: none;
+            padding: 0;
+        }
+        #objectList li {
+            margin-bottom: 5px;
+        }
+        #error {
+            color: red;
+            text-align: center;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Real-time Object Detection</h1>
+        <div id="videoContainer">
+            <video id="webcam" autoplay muted></video>
+            <canvas id="canvas"></canvas>
+        </div>
+        <div id="detectedObjects">
+            <h2>Detected Objects</h2>
+            <ul id="objectList"></ul>
+        </div>
+        <div id="error"></div>
+    </div>
+
+    <script>
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const objectList = document.getElementById('objectList');
+        const errorDiv = document.getElementById('error');
+
+        let model;
+        let detectedObjects = new Map();
+
+        async function setupCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                return new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        resolve(video);
+                    };
+                });
+            } catch (error) {
+                errorDiv.textContent = `Error accessing camera: ${error.message}`;
+                throw error;
+            }
+        }
+
+        async function loadModel() {
+            try {
+                model = await cocoSsd.load();
+            } catch (error) {
+                errorDiv.textContent = `Error loading model: ${error.message}`;
+                throw error;
+            }
+        }
+
+        function drawBoundingBox(prediction) {
+            const [x, y, width, height] = prediction.bbox;
+            ctx.strokeStyle = '#00FFFF';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(x, y, width, height);
+
+            ctx.fillStyle = '#00FFFF';
+            ctx.font = '18px Arial';
+            ctx.fillText(`${prediction.class} (${Math.round(prediction.score * 100)}%)`, x, y > 10 ? y - 5 : 10);
+        }
+
+        function updateDetectedObjects(predictions) {
+            predictions.forEach(prediction => {
+                if (!detectedObjects.has(prediction.class)) {
+                    const time = new Date().toLocaleTimeString();
+                    detectedObjects.set(prediction.class, time);
+                    const li = document.createElement('li');
+                    li.textContent = `${prediction.class} (first detected at ${time})`;
+                    objectList.appendChild(li);
+                }
+            });
+        }
+
+        async function detectObjects() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const predictions = await model.detect(video);
+            predictions.forEach(drawBoundingBox);
+            updateDetectedObjects(predictions);
+        }
+
+        async function run() {
+            await setupCamera();
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            await loadModel();
+            setInterval(detectObjects, 500); // 2 FPS
+        }
+
+        run();
+    </script>
+</body>
+</html>
